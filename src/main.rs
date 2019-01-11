@@ -85,8 +85,9 @@ impl AnalyzedResult {
 }
 
 fn main() {
-    let matcher = App::new("taskchutecloud")
-        .bin_name("taskchutecloud")
+    let matcher = App::new("tcc")
+        .bin_name("tcc")
+        .about("TaskChute Cloud utility tool")
         .version(crate_version!())
         .subcommand(
             SubCommand::with_name("project")
@@ -95,9 +96,10 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("analyze")
-                .about("Extract tasks of a specified project and calculate used time.")
+                .about("Extract tasks of a specified project and calculate used time")
                 .arg(
                     clap::Arg::with_name("project")
+                        .help("Target project ID (required)")
                         .short("p")
                         .long("project")
                         .takes_value(true)
@@ -105,6 +107,7 @@ fn main() {
                 )
                 .arg(
                     clap::Arg::with_name("format")
+                        .help("Output format: json or md (markdown)")
                         .short("f")
                         .long("format")
                         .takes_value(true)
