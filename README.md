@@ -5,7 +5,7 @@
 ## Install
 
 ```
-curl -L https://github.com/rot1024/tcc/releases/download/0.1.0/tcc-`uname -s`-`uname -m` > /usr/local/bin/tcc && chmod +x /usr/local/bin/tcc
+curl -L https://github.com/rot1024/tcc/releases/download/v0.1.0/tcc-`uname -s`-`uname -m` > /usr/local/bin/tcc && chmod +x /usr/local/bin/tcc
 ```
 
 ## tcc project
