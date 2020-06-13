@@ -129,7 +129,7 @@ fn main() {
     }
 }
 
-fn project(a: &ArgMatches) -> Result<(), Box<Error>> {
+fn project(a: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if let Some(file_name) = a.value_of_os("file") {
         let tasks = load(file_name)?;
 
@@ -142,7 +142,7 @@ fn project(a: &ArgMatches) -> Result<(), Box<Error>> {
     Ok(())
 }
 
-fn analyze(a: &ArgMatches) -> Result<(), Box<Error>> {
+fn analyze(a: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if let Some((file_name, project_id)) = a
         .value_of_os("file")
         .and_then(|f| a.value_of("project").map(|p| (f, p)))
@@ -236,7 +236,7 @@ fn analyze(a: &ArgMatches) -> Result<(), Box<Error>> {
     Ok(())
 }
 
-fn load<P: AsRef<Path>>(file_name: P) -> Result<Vec<model::Task>, Box<Error>> {
+fn load<P: AsRef<Path>>(file_name: P) -> Result<Vec<model::Task>, Box<dyn Error>> {
     let file = File::open(file_name)?;
     Ok(loader::load_taskchute_tsv(&file))
 }

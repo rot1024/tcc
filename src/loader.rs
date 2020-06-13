@@ -29,7 +29,7 @@ struct TaskDTO {
 }
 
 impl TaskDTO {
-  pub fn to_task(&self) -> Result<model::Task, Box<Error>> {
+  pub fn to_task(&self) -> Result<model::Task, Box<dyn Error>> {
     let date = NaiveDate::parse_from_str(&self.date, "%Y-%m-%d")?;
     let estimated_time = self
       .estimated_time
@@ -61,9 +61,9 @@ impl TaskDTO {
 
     Ok(model::Task {
       name: self.name.to_string(),
-      estimated_time: estimated_time,
-      begin_time: begin_time,
-      end_time: end_time,
+      estimated_time,
+      begin_time,
+      end_time,
       comment: self.comment.clone(),
       project: project.map(|(p, n)| model::Project {
         name: n.to_string(),
