@@ -1,5 +1,5 @@
 use chrono::{Duration, NaiveDateTime};
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
 pub struct Task {

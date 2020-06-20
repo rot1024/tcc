@@ -1,6 +1,6 @@
 use chrono::{Duration, NaiveDateTime};
 use clap::Clap;
-use serde_derive::Serialize;
+use serde::Serialize;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fs::File;

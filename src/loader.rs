@@ -1,6 +1,6 @@
 use chrono::{Duration, NaiveDate, NaiveTime};
 use encoding_rs_io::DecodeReaderBytes;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use std::error::Error;
 use std::io::Read;
 
