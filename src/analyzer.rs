@@ -25,6 +25,7 @@ pub struct AnalysisResultTask {
     pub comment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_time: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub time_gap_ratio: Option<f64>,
     pub begin_time: NaiveDateTime,
     pub end_time: NaiveDateTime,
@@ -72,6 +73,23 @@ pub fn analyze(tasks: Vec<Task>, project_id: &str) -> Option<AnalysisResult> {
         .map(|d| d.num_days())
         .unwrap_or(0);
 
+    let tasks = target_tasks
+        .iter()
+        .filter(|t| t.begin_time.and(t.end_time).is_some())
+        .map(|t| AnalysisResultTask {
+            name: t.name.to_string(),
+            comment: t.comment.clone(),
+            estimated_time: t.estimated_time.map(|t| t.num_minutes()),
+            time_gap_ratio: t.estimated_time.map(|e| {
+                (t.end_time.unwrap() - t.begin_time.unwrap()).num_minutes() as f64
+                    / e.num_minutes() as f64
+            }),
+            begin_time: t.begin_time.unwrap(),
+            end_time: t.end_time.unwrap(),
+            timespan: (t.end_time.unwrap() - t.begin_time.unwrap()).num_minutes(),
+        })
+        .collect();
+
     Some(AnalysisResult {
         project_name,
         total_estimated_time,
@@ -79,21 +97,6 @@ pub fn analyze(tasks: Vec<Task>, project_id: &str) -> Option<AnalysisResult> {
         total_time_gap_ratio: total_used_time as f64 / total_estimated_time as f64,
         total_period_days,
         used_time_per_day: total_used_time as f64 / total_period_days as f64,
-        tasks: target_tasks
-            .iter()
-            .filter(|t| t.begin_time.and(t.end_time).is_some())
-            .map(|t| AnalysisResultTask {
-                name: t.name.to_string(),
-                comment: t.comment.clone(),
-                estimated_time: t.estimated_time.map(|t| t.num_minutes()),
-                time_gap_ratio: t.estimated_time.map(|e| {
-                    (t.end_time.unwrap() - t.begin_time.unwrap()).num_minutes() as f64
-                        / e.num_minutes() as f64
-                }),
-                begin_time: t.begin_time.unwrap(),
-                end_time: t.end_time.unwrap(),
-                timespan: (t.end_time.unwrap() - t.begin_time.unwrap()).num_minutes(),
-            })
-            .collect(),
+        tasks,
     })
 }

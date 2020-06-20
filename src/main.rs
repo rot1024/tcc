@@ -12,12 +12,7 @@ use std::{
 use tcc::{analyze, csv_parser, markdown, Task};
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let arg = App::parse();
-    match arg.command {
-        Command::Project(c) => c.project()?,
-        Command::Analyze(c) => c.analyze()?,
-    };
-    Ok(())
+    App::parse().command.exec()
 }
 
 #[derive(Debug, Clap)]
@@ -37,6 +32,16 @@ pub enum Command {
     Analyze(AnalyzeCommand),
 }
 
+impl Command {
+    fn exec(&self) -> Result<(), Box<dyn Error>> {
+        match self {
+            Command::Project(c) => c.exec()?,
+            Command::Analyze(c) => c.exec()?,
+        };
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clap)]
 #[clap(name = "project")]
 pub struct ProjectCommand {
@@ -44,7 +49,7 @@ pub struct ProjectCommand {
 }
 
 impl ProjectCommand {
-    pub fn project(&self) -> Result<(), Box<dyn Error>> {
+    pub fn exec(&self) -> Result<(), Box<dyn Error>> {
         let tasks = load(&self.file)?;
 
         let projects: HashSet<_> = tasks.into_iter().filter_map(|t| t.project).collect();
@@ -70,7 +75,7 @@ pub struct AnalyzeCommand {
 }
 
 impl AnalyzeCommand {
-    pub fn analyze(&self) -> Result<(), Box<dyn Error>> {
+    pub fn exec(&self) -> Result<(), Box<dyn Error>> {
         let tasks = load(&self.file)?;
         let res = analyze(tasks, &self.project).expect("Project is not found.");
 
@@ -113,8 +118,7 @@ impl FromStr for Format {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "markdown" => Ok(Self::Markdown),
-            "md" => Ok(Self::Markdown),
+            "markdown" | "md" => Ok(Self::Markdown),
             "json" => Ok(Self::JSON),
             _ => Err("invalid format"),
         }
