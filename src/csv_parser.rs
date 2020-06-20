@@ -1,9 +1,9 @@
+use crate::{Project, Task};
 use chrono::{Duration, NaiveDate, NaiveTime};
 use encoding_rs_io::DecodeReaderBytes;
 use serde::Deserialize;
 use std::error::Error;
 use std::io::Read;
-use tcc::{Project, Task};
 
 #[derive(Deserialize, Debug)]
 struct TccTask {
@@ -72,7 +72,7 @@ impl TccTask {
     }
 }
 
-pub fn load_taskchute_tsv(r: impl Read) -> Vec<Task> {
+pub fn parse(r: impl Read) -> Vec<Task> {
     csv::ReaderBuilder::new()
         .delimiter(b'\t')
         .has_headers(true)

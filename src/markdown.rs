@@ -1,6 +1,6 @@
+use crate::AnalysisResult;
 use chrono::Duration;
 use std::{error::Error, io::Write};
-use tcc::AnalysisResult;
 
 pub fn write_to<W: Write>(w: &mut W, v: &AnalysisResult) -> Result<(), Box<dyn Error>> {
     write!(
