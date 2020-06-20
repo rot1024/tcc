@@ -1,5 +1,5 @@
 use chrono::{Duration, NaiveDateTime};
-use clap::{crate_version, App, ArgMatches, SubCommand};
+use clap::Clap;
 use serde_derive::Serialize;
 use std::collections::HashSet;
 use std::error::Error;
@@ -9,6 +9,7 @@ use std::path::Path;
 
 mod loader;
 mod model;
+mod opt;
 
 #[derive(Debug, Serialize)]
 struct Task {
@@ -59,10 +60,10 @@ impl AnalyzedResult {
             .unwrap_or(0);
 
         AnalyzedResult {
-            total_estimated_time: total_estimated_time,
-            total_used_time: total_used_time,
+            total_estimated_time,
+            total_used_time,
             total_time_gap_ratio: total_used_time as f64 / total_estimated_time as f64,
-            total_period_days: total_period_days,
+            total_period_days,
             used_time_per_day: total_used_time as f64 / total_period_days as f64,
             tasks: tasks
                 .iter()
@@ -84,155 +85,115 @@ impl AnalyzedResult {
     }
 }
 
-fn main() {
-    let matcher = App::new("tcc")
-        .bin_name("tcc")
-        .about("TaskChute Cloud utility tool")
-        .version(crate_version!())
-        .subcommand(
-            SubCommand::with_name("project")
-                .about("Show project names and IDs")
-                .arg(clap::Arg::with_name("file")),
-        )
-        .subcommand(
-            SubCommand::with_name("analyze")
-                .about("Extract tasks of a specified project and calculate used time")
-                .arg(
-                    clap::Arg::with_name("project")
-                        .help("Target project ID (required)")
-                        .short("p")
-                        .long("project")
-                        .takes_value(true)
-                        .required(true),
-                )
-                .arg(
-                    clap::Arg::with_name("format")
-                        .help("Output format: json or md (markdown)")
-                        .short("f")
-                        .long("format")
-                        .takes_value(true)
-                        .default_value("json"),
-                )
-                .arg(clap::Arg::with_name("file")),
-        )
-        .get_matches();
+fn main() -> Result<(), Box<dyn Error>> {
+    let arg = opt::App::parse();
 
-    let result = match matcher.subcommand() {
-        ("project", Some(m)) => project(&m),
-        ("analyze", Some(m)) => analyze(&m),
-        ("", None) => Ok(()),
-        _ => unreachable!(),
+    match arg.command {
+        opt::Command::Project { file } => {
+            let tasks = load(file)?;
+
+            let projects: HashSet<_> = tasks.into_iter().filter_map(|t| t.project).collect();
+
+            projects
+                .into_iter()
+                .for_each(|p| println!("{} - {}", p.id, p.name));
+        }
+        opt::Command::Analyze {
+            file,
+            format,
+            project,
+        } => {
+            analyze(&file, &project, format)?;
+        }
     };
 
-    if let Err(err) = result {
-        eprintln!("{:?}", err);
-    }
-}
-
-fn project(a: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    if let Some(file_name) = a.value_of_os("file") {
-        let tasks = load(file_name)?;
-
-        let projects: HashSet<_> = tasks.into_iter().filter_map(|t| t.project).collect();
-
-        projects
-            .into_iter()
-            .for_each(|p| println!("{} - {}", p.id, p.name));
-    }
     Ok(())
 }
 
-fn analyze(a: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    if let Some((file_name, project_id)) = a
-        .value_of_os("file")
-        .and_then(|f| a.value_of("project").map(|p| (f, p)))
-    {
-        let format = a.value_of("format");
-        let tasks = &load(file_name)?;
-        let project_name = tasks
-            .into_iter()
-            .find(|t| {
-                t.project
-                    .as_ref()
-                    .map(|p| p.id == project_id)
-                    .unwrap_or(false)
-            })
-            .map(|p| p.project.as_ref().unwrap().name.to_string())
-            .expect("project is not found");
+fn analyze(file_name: &str, project_id: &str, format: opt::Format) -> Result<(), Box<dyn Error>> {
+    let tasks = &load(file_name)?;
+    let project_name = tasks
+        .into_iter()
+        .find(|t| {
+            t.project
+                .as_ref()
+                .map(|p| p.id == project_id)
+                .unwrap_or(false)
+        })
+        .map(|p| p.project.as_ref().unwrap().name.to_string())
+        .expect("project is not found");
 
-        let target_tasks: Vec<_> = tasks
-            .into_iter()
-            .filter(|t| {
-                t.project
-                    .as_ref()
-                    .map(|p| p.id == project_id)
-                    .unwrap_or(false)
-            })
-            .collect();
+    let target_tasks: Vec<_> = tasks
+        .into_iter()
+        .filter(|t| {
+            t.project
+                .as_ref()
+                .map(|p| p.id == project_id)
+                .unwrap_or(false)
+        })
+        .collect();
 
-        let res = AnalyzedResult::new(&target_tasks);
+    let res = AnalyzedResult::new(&target_tasks);
 
-        match format {
-            Some("json") => {
-                serde_json::to_writer(stdout(), &res)?;
-            }
-            Some("md") => {
-                let out = stdout();
-                let mut stdout = out.lock();
-                write!(
-                    stdout,
-                    r#"# Review - {}
+    match format {
+        opt::Format::JSON => {
+            serde_json::to_writer(stdout(), &res)?;
+        }
+        opt::Format::Markdown => {
+            let out = stdout();
+            let mut stdout = out.lock();
+            write!(
+                stdout,
+                r#"# Review - {}
 
 |タスク|日付|開始時刻|終了時刻|予定|実績|実績/予定|コメント|
 |---|---|---|---|---|---|---|---|
 "#,
-                    project_name
-                )?;
-                for t in res.tasks.into_iter() {
-                    write!(
-                        stdout,
-                        "|{}|{}|{}|{}|{}|{}|{}|{}|\n",
-                        t.name,
-                        t.begin_time.date().format("%Y-%m-%d"),
-                        t.begin_time.time().format("%H:%M"),
-                        t.end_time.time().format("%H:%M"),
-                        t.estimated_time
-                            .map(|e| e.to_string())
-                            .unwrap_or("-".to_string()),
-                        t.timespan,
-                        t.time_gap_ratio
-                            .map(|r| format!("{:.2}", r))
-                            .unwrap_or("-".to_string()),
-                        t.comment.unwrap_or(String::new())
-                    )?;
-                }
-
-                let estimated_time = Duration::minutes(res.total_estimated_time);
-                let used_time = Duration::minutes(res.total_used_time);
-                let per_day = Duration::minutes(res.used_time_per_day as i64);
-
+                project_name
+            )?;
+            for t in res.tasks.into_iter() {
                 write!(
                     stdout,
-                    r#"
- - 合計見積時間: {}h ({:.2}d)
- - 合計所要時間: {}h ({:.2}d) (x{:.2})
- - 実施期間： {}日
- - 1日あたり所要時間： {:02}:{:02}
-"#,
-                    estimated_time.num_hours(),
-                    estimated_time.num_hours() as f64 / 24.0,
-                    used_time.num_hours(),
-                    used_time.num_hours() as f64 / 24.0,
-                    res.total_time_gap_ratio,
-                    res.total_period_days,
-                    per_day.num_hours(),
-                    per_day.num_minutes() % 60
+                    "|{}|{}|{}|{}|{}|{}|{}|{}|\n",
+                    t.name,
+                    t.begin_time.date().format("%Y-%m-%d"),
+                    t.begin_time.time().format("%H:%M"),
+                    t.end_time.time().format("%H:%M"),
+                    t.estimated_time
+                        .map(|e| e.to_string())
+                        .unwrap_or("-".to_string()),
+                    t.timespan,
+                    t.time_gap_ratio
+                        .map(|r| format!("{:.2}", r))
+                        .unwrap_or("-".to_string()),
+                    t.comment.unwrap_or(String::new())
                 )?;
-                stdout.flush()?;
             }
-            _ => unreachable!(),
-        };
-    }
+
+            let estimated_time = Duration::minutes(res.total_estimated_time);
+            let used_time = Duration::minutes(res.total_used_time);
+            let per_day = Duration::minutes(res.used_time_per_day as i64);
+
+            write!(
+                stdout,
+                r#"
+- 合計見積時間: {}h ({:.2}d)
+- 合計所要時間: {}h ({:.2}d) (x{:.2})
+- 実施期間： {}日
+- 1日あたり所要時間： {:02}:{:02}
+"#,
+                estimated_time.num_hours(),
+                estimated_time.num_hours() as f64 / 24.0,
+                used_time.num_hours(),
+                used_time.num_hours() as f64 / 24.0,
+                res.total_time_gap_ratio,
+                res.total_period_days,
+                per_day.num_hours(),
+                per_day.num_minutes() % 60
+            )?;
+            stdout.flush()?;
+        }
+    };
     Ok(())
 }
 
