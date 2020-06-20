@@ -3,11 +3,10 @@ use encoding_rs_io::DecodeReaderBytes;
 use serde::Deserialize;
 use std::error::Error;
 use std::io::Read;
-
-use super::model;
+use tcc::{Project, Task};
 
 #[derive(Deserialize, Debug)]
-struct TaskDTO {
+struct TccTask {
     #[serde(rename = "実行日")]
     date: String,
     #[serde(rename = "タスク名")]
@@ -28,8 +27,8 @@ struct TaskDTO {
     project_id: Option<String>,
 }
 
-impl TaskDTO {
-    pub fn to_task(&self) -> Result<model::Task, Box<dyn Error>> {
+impl TccTask {
+    pub fn to_task(&self) -> Result<Task, Box<dyn Error>> {
         let date = NaiveDate::parse_from_str(&self.date, "%Y-%m-%d")?;
         let estimated_time = self
             .estimated_time
@@ -59,13 +58,13 @@ impl TaskDTO {
             .as_ref()
             .and_then(|n| self.project_id.as_ref().map(|p| (p, n)));
 
-        Ok(model::Task {
+        Ok(Task {
             name: self.name.to_string(),
             estimated_time,
             begin_time,
             end_time,
             comment: self.comment.clone(),
-            project: project.map(|(p, n)| model::Project {
+            project: project.map(|(p, n)| Project {
                 name: n.to_string(),
                 id: p.to_string(),
             }),
@@ -73,12 +72,12 @@ impl TaskDTO {
     }
 }
 
-pub fn load_taskchute_tsv(r: impl Read) -> Vec<model::Task> {
+pub fn load_taskchute_tsv(r: impl Read) -> Vec<Task> {
     csv::ReaderBuilder::new()
         .delimiter(b'\t')
         .has_headers(true)
         .from_reader(DecodeReaderBytes::new(r))
-        .deserialize::<TaskDTO>()
+        .deserialize::<TccTask>()
         .into_iter()
         .filter_map(|r| r.ok().and_then(|t| t.to_task().ok()))
         .collect()
