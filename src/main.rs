@@ -72,12 +72,15 @@ pub struct AnalyzeCommand {
     /// Format: markdown, json
     #[clap(short, long, default_value = "markdown")]
     format: Format,
+    /// Value
+    #[clap(short, long)]
+    value: Option<i64>,
 }
 
 impl AnalyzeCommand {
     pub fn exec(&self) -> Result<(), Box<dyn Error>> {
         let tasks = load(&self.file)?;
-        let res = analyze(tasks, &self.project).expect("Project is not found.");
+        let res = analyze(tasks, &self.project, self.value).expect("Project is not found.");
 
         match self.format {
             Format::JSON => {
