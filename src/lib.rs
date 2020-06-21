@@ -8,6 +8,7 @@ pub mod markdown;
 
 #[derive(Debug)]
 pub struct Task {
+    pub id: String,
     pub name: String,
     pub estimated_time: Option<Duration>,
     pub begin_time: Option<NaiveDateTime>,

@@ -3,10 +3,12 @@ use chrono::{Duration, NaiveDate, NaiveTime};
 use encoding_rs_io::DecodeReaderBytes;
 use serde::Deserialize;
 use std::error::Error;
-use std::io::Read;
+use std::{convert::TryInto, io::Read};
 
 #[derive(Deserialize, Debug)]
 struct TccTask {
+    #[serde(rename = "タスクID")]
+    id: String,
     #[serde(rename = "実行日")]
     date: String,
     #[serde(rename = "タスク名")]
@@ -27,8 +29,10 @@ struct TccTask {
     project_id: Option<String>,
 }
 
-impl TccTask {
-    pub fn to_task(&self) -> Result<Task, Box<dyn Error>> {
+impl TryInto<Task> for TccTask {
+    type Error = Box<dyn Error>;
+
+    fn try_into(self) -> Result<Task, Self::Error> {
         let date = NaiveDate::parse_from_str(&self.date, "%Y-%m-%d")?;
         let estimated_time = self
             .estimated_time
@@ -53,12 +57,14 @@ impl TccTask {
                             .unwrap_or(0),
                     )
             });
+        let project_id = self.project_id.as_ref();
         let project = self
             .project_name
             .as_ref()
-            .and_then(|n| self.project_id.as_ref().map(|p| (p, n)));
+            .and_then(|n| project_id.map(|p| (p, n)));
 
         Ok(Task {
+            id: self.id,
             name: self.name.to_string(),
             estimated_time,
             begin_time,
@@ -79,6 +85,6 @@ pub fn parse(r: impl Read) -> Vec<Task> {
         .from_reader(DecodeReaderBytes::new(r))
         .deserialize::<TccTask>()
         .into_iter()
-        .filter_map(|r| r.ok().and_then(|t| t.to_task().ok()))
+        .filter_map(|r| r.ok().and_then(|t| t.try_into().ok()))
         .collect()
 }
