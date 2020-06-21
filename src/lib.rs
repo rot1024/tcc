@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 mod analyzer;
 pub mod csv_parser;
+mod holiday;
 pub mod markdown;
 
 #[derive(Debug)]
@@ -15,6 +16,7 @@ pub struct Task {
     pub end_time: Option<NaiveDateTime>,
     pub comment: Option<String>,
     pub project: Option<Project>,
+    pub holiday: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]

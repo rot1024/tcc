@@ -1,4 +1,4 @@
-use crate::{Project, Task};
+use crate::{holiday::HOLIDAYS, Project, Task};
 use chrono::{Duration, NaiveDate, NaiveTime};
 use encoding_rs_io::DecodeReaderBytes;
 use serde::Deserialize;
@@ -74,6 +74,9 @@ impl TryInto<Task> for TccTask {
                 name: n.to_string(),
                 id: p.to_string(),
             }),
+            holiday: begin_time
+                .map(|d| HOLIDAYS.contains_key(&d.date()))
+                .unwrap_or(false),
         })
     }
 }
