@@ -9,24 +9,38 @@ use std::{
 pub fn write_to<W: Write>(w: &mut W, v: &AnalysisResult) -> Result<(), Box<dyn Error>> {
     write!(
         w,
-        r#"# {}
+        r#"# {name}
 
-{}
 ## 全タスクの分析
 
-{}
-"#,
-        v.project_name,
-        Tasks(&v.all.tasks),
-        Analysis(&v.all, v.value)
+{all}
+
+## 曜日別
+
+{weekday}
+## 平日・平日
+
+{day}
+## 工程別
+
+{group}
+## 全タスク
+
+{tasktable}"#,
+        name = v.project_name,
+        all = Analysis(&v.all, v.value),
+        weekday = Group(&v.weekday, v.value),
+        day = Group(&v.day, v.value),
+        group = Group(&v.group, v.value),
+        tasktable = TaskTable(&v.all.tasks),
     )?;
 
     Ok(())
 }
 
-struct Tasks<'a>(&'a [AnalysisResultTask]);
+struct TaskTable<'a>(&'a [AnalysisResultTask]);
 
-impl<'a> Tasks<'a> {
+impl<'a> TaskTable<'a> {
     const HEADERS: [&'static str; 8] = [
         "タスク",
         "日付",
@@ -39,7 +53,7 @@ impl<'a> Tasks<'a> {
     ];
 }
 
-impl<'a> Display for Tasks<'a> {
+impl<'a> Display for TaskTable<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -77,6 +91,23 @@ impl<'a> Display for Tasks<'a> {
     }
 }
 
+struct Group<'a>(&'a Vec<(String, TasksAnalysisResult)>, Option<i64>);
+
+impl<'a> Display for Group<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (k, v) in self.0 {
+            write!(
+                f,
+                "### {}\n\n{}\n\n{}\n",
+                k,
+                Analysis(v, self.1),
+                TaskTable(&v.tasks)
+            )?;
+        }
+        Ok(())
+    }
+}
+
 struct Analysis<'a>(&'a TasksAnalysisResult, Option<i64>);
 
 impl<'a> Display for Analysis<'a> {
@@ -96,12 +127,12 @@ impl<'a> Display for Analysis<'a> {
             f,
             r#"- 合計見積時間: {estimated_time}
 - 合計所要時間: {work_time}{gap}
-- 実施期間： {period}d
+- 稼働日数： {period}d
 - 1日あたり所要時間
     - 平均：{per_day}
     - 最大：{max}
-    - 中央：{median}
     - 最小：{min}
+    - 中央：{median}
     - 標準偏差：{deviation}{per_value}"#,
             estimated_time = estimated_time,
             work_time = work_time,
@@ -134,7 +165,11 @@ impl From<i64> for Timespan {
 
 impl From<f64> for Timespan {
     fn from(d: f64) -> Self {
-        Self(Duration::seconds(d as i64 * 60))
+        Self(if d.is_normal() {
+            Duration::seconds(d as i64 * 60)
+        } else {
+            Duration::zero()
+        })
     }
 }
 
@@ -156,35 +191,35 @@ impl Display for Timespan {
 
         if w > 0 {
             r.push(format!(
-                "{:02}w ({}w{}d)",
-                ceil(w as f64 + ((d % 7) as f64 / 7f64), 2),
+                "{}w{}d ({:02}w)",
                 w,
-                d % 27
+                d % 27,
+                ceil(w as f64 + ((d % 7) as f64 / 7f64), 2),
             ))
         }
         if d > 0 {
             r.push(format!(
-                "{:02}d ({}d{}h)",
-                ceil(d as f64 + ((h % 24) as f64 / 24f64), 2),
+                "{}d{}h ({:02}d)",
                 d,
-                (h % 24)
+                h % 24,
+                ceil(d as f64 + ((h % 24) as f64 / 24f64), 2),
             ))
         }
         if h > 0 {
             r.push(format!(
-                "{:02}h ({}h{}m)",
-                ceil(h as f64 + ((m % 60) as f64 / 60f64), 2),
+                "{}h{}m ({:02}h)",
                 h,
-                m % 60
+                m % 60,
+                ceil(h as f64 + ((m % 60) as f64 / 60f64), 2),
             ))
         }
         if m > 0 {
             if s % 60 != 0 {
                 r.push(format!(
-                    "{:02}m ({}m{}s)",
-                    ceil(m as f64 + ((s % 60) as f64 / 60f64), 2),
+                    "{}m{}s ({:02}m)",
                     m,
-                    s % 60
+                    s % 60,
+                    ceil(m as f64 + ((s % 60) as f64 / 60f64), 2),
                 ))
             } else {
                 r.push(format!("{}m", m))

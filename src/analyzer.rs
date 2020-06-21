@@ -1,5 +1,5 @@
 use crate::{Project, Task};
-use chrono::NaiveDateTime;
+use chrono::{Datelike, NaiveDateTime, Weekday};
 use itertools::Itertools;
 use serde::Serialize;
 use std::cmp::Ordering;
@@ -9,22 +9,56 @@ pub struct AnalysisResult {
     pub project_name: String,
     pub value: Option<i64>,
     pub all: TasksAnalysisResult,
-    // 平日・休日別
-    // pub day: HashMap<String, TasksAnalysisResult>,
-    // 曜日別
-    // pub weekday: HashMap<String, TasksAnalysisResult>,
-    // グループ別
-    // pub group: HashMap<String, TasksAnalysisResult>,
+    /// 平日・休日別
+    pub day: Vec<(String, TasksAnalysisResult)>,
+    /// 曜日別
+    pub weekday: Vec<(String, TasksAnalysisResult)>,
+    /// グループ別
+    pub group: Vec<(String, TasksAnalysisResult)>,
 }
 
 pub fn analyze(tasks: Vec<Task>, project_id: &str, value: Option<i64>) -> Option<AnalysisResult> {
-    let target_tasks = Tasks::new(tasks, project_id, value);
+    let target_tasks = Tasks(
+        tasks
+            .into_iter()
+            .filter(|t| {
+                t.project
+                    .as_ref()
+                    .map(|p| p.id == project_id)
+                    .unwrap_or(false)
+            })
+            .filter(|t| t.begin_time.and(t.end_time).is_some())
+            .map(From::from)
+            .sorted()
+            .collect(),
+        value,
+    );
     let project_name = target_tasks.project_name(project_id)?;
+
+    fn analyze_group(g: Vec<(String, Tasks)>) -> Vec<(String, TasksAnalysisResult)> {
+        g.into_iter().map(|(k, v)| (k, v.analyze())).collect()
+    }
+
+    let weekday = target_tasks.group_by(|t| t.begin_time.weekday().to_string());
+    let day = target_tasks.group_by(|t| match t.begin_time.weekday() {
+        Weekday::Sat | Weekday::Sun => "holiday".into(),
+        _ => {
+            if t.holiday {
+                "holiday".into()
+            } else {
+                "weekday".into()
+            }
+        }
+    });
+    let group = target_tasks.group_by(|t| t.group.clone().unwrap_or("-".into()));
 
     Some(AnalysisResult {
         project_name,
         value,
         all: target_tasks.analyze(),
+        weekday: analyze_group(weekday),
+        day: analyze_group(day),
+        group: analyze_group(group),
     })
 }
 
@@ -43,6 +77,7 @@ pub struct AnalysisResultTask {
     pub begin_time: NaiveDateTime,
     pub end_time: NaiveDateTime,
     pub timespan: i64,
+    pub holiday: bool,
 }
 
 impl PartialEq for AnalysisResultTask {
@@ -72,8 +107,13 @@ impl From<Task> for AnalysisResultTask {
 
         Self {
             id: task.id,
-            name: task.name,
-            group: None,
+            name: task.name.clone(),
+            group: task
+                .name
+                .split_whitespace()
+                .tuple_combinations::<(_, _)>()
+                .next()
+                .map(|(a, _)| a.into()),
             project: task.project,
             comment: task.comment,
             estimated_time: task.estimated_time.map(|t| t.num_minutes()),
@@ -83,15 +123,13 @@ impl From<Task> for AnalysisResultTask {
             begin_time: task.begin_time.unwrap(),
             end_time: task.end_time.unwrap(),
             timespan: (task.end_time.unwrap() - task.begin_time.unwrap()).num_minutes(),
+            holiday: task.holiday,
         }
     }
 }
 
 #[derive(Debug, Serialize)]
-struct Tasks {
-    tasks: Vec<AnalysisResultTask>,
-    value: Option<i64>,
-}
+struct Tasks(Vec<AnalysisResultTask>, Option<i64>);
 
 #[derive(Debug, Serialize)]
 pub struct TasksAnalysisResult {
@@ -120,26 +158,18 @@ pub struct TasksAnalysisResult {
 }
 
 impl Tasks {
-    fn new<T: IntoIterator<Item = Task>>(tasks: T, project_id: &str, value: Option<i64>) -> Self {
-        Self {
-            tasks: tasks
-                .into_iter()
-                .filter(|t| {
-                    t.project
-                        .as_ref()
-                        .map(|p| p.id == project_id)
-                        .unwrap_or(false)
-                })
-                .filter(|t| t.begin_time.and(t.end_time).is_some())
-                .map(From::from)
-                .sorted()
-                .collect(),
-            value,
-        }
+    fn group_by<F: Fn(&&AnalysisResultTask) -> String>(&self, key: F) -> Vec<(String, Self)> {
+        self.0
+            .iter()
+            .sorted_by_key(|a| key(a))
+            .group_by::<String, _>(|a| key(a))
+            .into_iter()
+            .map(|(k, v)| (k, Self(v.cloned().collect(), self.1)))
+            .collect()
     }
 
     fn project_name(&self, project_id: &str) -> Option<String> {
-        self.tasks
+        self.0
             .iter()
             .find(|t| {
                 t.project
@@ -151,22 +181,23 @@ impl Tasks {
     }
 
     fn total_estimated_time(&self) -> i64 {
-        self.tasks.iter().filter_map(|t| t.estimated_time).sum()
+        self.0.iter().filter_map(|t| t.estimated_time).sum()
     }
 
     fn total_work_time(&self) -> i64 {
-        self.tasks
+        self.0
             .iter()
             .map(|t| (t.end_time - t.begin_time).num_minutes())
             .sum()
     }
 
     fn work_days(&self) -> i64 {
-        self.tasks
-            .first()
-            .and_then(|f| self.tasks.last().map(|l| (f, l)))
-            .map(|(f, l)| (l.end_time - f.begin_time).num_days())
-            .unwrap_or(0)
+        self.0
+            .iter()
+            .map(|t| t.begin_time.date())
+            // .flat_map(|t| vec![t.begin_time.date(), t.end_time.date()].into_iter())
+            .unique()
+            .count() as i64
     }
 
     fn work_time_per_day(&self) -> f64 {
@@ -174,36 +205,36 @@ impl Tasks {
     }
 
     fn work_time_per_day_max(&self) -> i64 {
-        self.tasks.iter().map(|t| t.timespan).max().unwrap_or(0)
+        self.0.iter().map(|t| t.timespan).max().unwrap_or(0)
     }
 
     fn work_time_per_day_min(&self) -> i64 {
-        self.tasks.iter().map(|t| t.timespan).min().unwrap_or(0)
+        self.0.iter().map(|t| t.timespan).min().unwrap_or(0)
     }
 
     fn work_time_per_day_median(&self) -> i64 {
-        let v: Vec<i64> = self.tasks.iter().map(|t| t.timespan).sorted().collect();
+        let v: Vec<i64> = self.0.iter().map(|t| t.timespan).sorted().collect();
         v.get(v.len() / 2).map(|v| *v).unwrap_or(0)
     }
 
     fn work_time_per_day_deviation(&self) -> f64 {
         let a = self.work_time_per_day();
         (self
-            .tasks
+            .0
             .iter()
             .map(|t| (t.timespan as f64 - a).powi(2))
             .sum::<f64>()
-            / self.tasks.len() as f64)
+            / self.0.len() as f64)
             .sqrt()
     }
 
     fn work_time_per_value(&self) -> Option<f64> {
-        let v = self.value?;
+        let v = self.1?;
         Some(self.total_work_time() as f64 / v as f64)
     }
 
     fn tasks(self) -> Vec<AnalysisResultTask> {
-        self.tasks
+        self.0
     }
 
     fn analyze(self) -> TasksAnalysisResult {
