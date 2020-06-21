@@ -11,8 +11,6 @@ pub struct AnalysisResult {
     pub all: TasksAnalysisResult,
     /// 平日・休日別
     pub day: Vec<(String, TasksAnalysisResult)>,
-    /// 曜日別
-    pub weekday: Vec<(String, TasksAnalysisResult)>,
     /// グループ別
     pub group: Vec<(String, TasksAnalysisResult)>,
 }
@@ -39,14 +37,13 @@ pub fn analyze(tasks: Vec<Task>, project_id: &str, value: Option<i64>) -> Option
         g.into_iter().map(|(k, v)| (k, v.analyze())).collect()
     }
 
-    let weekday = target_tasks.group_by(|t| t.begin_time.weekday().to_string());
     let day = target_tasks.group_by(|t| match t.begin_time.weekday() {
-        Weekday::Sat | Weekday::Sun => "holiday".into(),
+        Weekday::Sat | Weekday::Sun => "休日".into(),
         _ => {
             if t.holiday {
-                "holiday".into()
+                "休日".into()
             } else {
-                "weekday".into()
+                "平日".into()
             }
         }
     });
@@ -56,7 +53,6 @@ pub fn analyze(tasks: Vec<Task>, project_id: &str, value: Option<i64>) -> Option
         project_name,
         value,
         all: target_tasks.analyze(),
-        weekday: analyze_group(weekday),
         day: analyze_group(day),
         group: analyze_group(group),
     })

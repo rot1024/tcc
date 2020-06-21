@@ -11,25 +11,21 @@ pub fn write_to<W: Write>(w: &mut W, v: &AnalysisResult) -> Result<(), Box<dyn E
         w,
         r#"# {name}
 
-## 全タスクの分析
+## 全タスク
 
 {all}
 
-## 曜日別
-
-{weekday}
-## 平日・平日
+## 平日休日別
 
 {day}
 ## 工程別
 
 {group}
-## 全タスク
+## 全タスクの一覧
 
 {tasktable}"#,
         name = v.project_name,
         all = Analysis(&v.all, v.value),
-        weekday = Group(&v.weekday, v.value),
         day = Group(&v.day, v.value),
         group = Group(&v.group, v.value),
         tasktable = TaskTable(&v.all.tasks),
