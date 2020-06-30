@@ -1,5 +1,5 @@
 use crate::{Project, Task};
-use chrono::{Datelike, NaiveDateTime, Weekday};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, Weekday};
 use itertools::Itertools;
 use serde::Serialize;
 use std::cmp::Ordering;
@@ -201,24 +201,39 @@ impl Tasks {
     }
 
     fn work_time_per_day_max(&self) -> i64 {
-        self.0.iter().map(|t| t.timespan).max().unwrap_or(0)
+        self.work_time_per_days()
+            .iter()
+            .map(|(_, v)| v)
+            .max()
+            .map(|v| *v)
+            .unwrap_or(0)
     }
 
     fn work_time_per_day_min(&self) -> i64 {
-        self.0.iter().map(|t| t.timespan).min().unwrap_or(0)
+        self.work_time_per_days()
+            .iter()
+            .map(|(_, v)| v)
+            .min()
+            .map(|v| *v)
+            .unwrap_or(0)
     }
 
     fn work_time_per_day_median(&self) -> i64 {
-        let v: Vec<i64> = self.0.iter().map(|t| t.timespan).sorted().collect();
+        let v: Vec<i64> = self
+            .work_time_per_days()
+            .iter()
+            .map(|(_, v)| *v)
+            .sorted()
+            .collect();
         v.get(v.len() / 2).map(|v| *v).unwrap_or(0)
     }
 
     fn work_time_per_day_deviation(&self) -> f64 {
         let a = self.work_time_per_day();
         (self
-            .0
+            .work_time_per_days()
             .iter()
-            .map(|t| (t.timespan as f64 - a).powi(2))
+            .map(|(_, v)| (*v as f64 - a).powi(2))
             .sum::<f64>()
             / self.0.len() as f64)
             .sqrt()
@@ -231,6 +246,16 @@ impl Tasks {
 
     fn tasks(self) -> Vec<AnalysisResultTask> {
         self.0
+    }
+
+    fn work_time_per_days(&self) -> Vec<(NaiveDate, i64)> {
+        self.0
+            .iter()
+            .sorted_by_key(|a| a.begin_time.date())
+            .group_by(|a| a.begin_time.date())
+            .into_iter()
+            .map(|(k, v)| (k, v.map(|t| t.timespan).sum()))
+            .collect()
     }
 
     fn analyze(self) -> TasksAnalysisResult {
